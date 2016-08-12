@@ -33,10 +33,12 @@
 #define GPIO_PIN2                                12
 #define DMA                                      5
 
-// #define STRIP_TYPE				             WS2811_STRIP_RGB		// WS2812/SK6812RGB integrated chip+leds
+// #define STRIP_TYPE				                 WS2811_STRIP_RGB		// WS2812/SK6812RGB integrated chip+leds
 // #define STRIP_TYPE				             WS2811_STRIP_GBR		// WS2812/SK6812RGB integrated chip+leds
 // #define STRIP_TYPE				             SK6812_STRIP_RGBW		// SK6812RGBW (NOT SK6812RGB)
-#define STRIP_TYPE                               WS2811_STRIP_BRG
+
+#define STRIP_TYPE                               WS2811_STRIP_GRB
+// #define STRIP_TYPE                               WS2811_STRIP_BRG
 
 	
 #define UDP_PORT 								 6454
