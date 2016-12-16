@@ -29,29 +29,32 @@
 
 // defaults for cmdline options
 #define TARGET_FREQ                              WS2811_TARGET_FREQ
-#define GPIO_PIN1                                18
+#define GPIO_PIN1                                12
 #define GPIO_PIN2                                12
 #define DMA                                      5
+#define DEBUG					 1
+
 
 // #define STRIP_TYPE				                 WS2811_STRIP_RGB		// WS2812/SK6812RGB integrated chip+leds
 // #define STRIP_TYPE				             WS2811_STRIP_GBR		// WS2812/SK6812RGB integrated chip+leds
 // #define STRIP_TYPE				             SK6812_STRIP_RGBW		// SK6812RGBW (NOT SK6812RGB)
 
-#define STRIP_TYPE                               WS2811_STRIP_GRB
-// #define STRIP_TYPE                               WS2811_STRIP_BRG
+// #define STRIP_TYPE                               WS2811_STRIP_GRB
+#define STRIP_TYPE                               WS2811_STRIP_BRG
 
-	
-#define UDP_PORT 								 6454
-#define DMX_BUFFER_SIZE						     530
 
-#define BRIGHT                                   200
-#define LED_PER_U								 161
+#define UDP_PORT 				 6454
+#define DMX_BUFFER_SIZE				 530
+
+#define BRIGHT                                   100
+#define LED_PER_U				 170
 #define UNIVERSE                                 5
 #define LED_COUNT                                (LED_PER_U * UNIVERSE)
 int width = LED_PER_U;
 int height = UNIVERSE;
+int debug = DEBUG;
 int led_count = LED_COUNT;
-
+int fps = 60;
 int clear_on_exit = 1;
 
 void dmx2rgb(ws2811_led_t* dest, char *src, size_t sn);
@@ -83,22 +86,39 @@ ws2811_t ledstring =
 ws2811_led_t *matrix;
 
 static uint8_t running = 1;
+/*
+int dotspos[] = { 0, 1, 2, 3, 4, 5, 6, 7 };
+*/
+ws2811_led_t dotcolors[] =
+{
+    0x00200000,  // red
+    0x00201000,  // orange
+    0x00202000,  // yellow
+    0x00002000,  // green
+    0x00002020,  // lightblue
+    0x00000020,  // blue
+    0x00100010,  // purple
+    0x00200010,  // pink
+};
 
 void matrix_debug(void)
 {
-    int i;
-	// ws2811_led_t tmp;
-	// static int step = 0;
-	
-	for (i = 0; i < LED_COUNT; i++) {
-		
-		// tmp = (ws2811_led_t)round(127. + 127. * cos(6.28 * (float)(i - step) / (float)LED_COUNT));
-		// matrix[i] = (tmp << 16) + (tmp << 8) + tmp;
-		// matrix[i] = tmp;
-		
+	static int idx = 0, lidx = 0;
+	int i;
+/*
+	for(i = 0; i < UNIVERSE; i++) {
+		for(j = 0; j < LED_PER_U; j++) {
+			matrix[i * LED_PER_U + j] = dotcolors[(i + idx)%8];
+		}
 	}
-	// step += 50;
-	// if(step > LED_COUNT) { step = 0; }
+	if(++idx >= 8) idx = 0;
+*/
+	for(i = 0; i < UNIVERSE; i++) {
+		matrix[i * LED_PER_U + lidx] = 0;
+		matrix[i * LED_PER_U + idx] = 16777215;
+	}
+	lidx = idx;
+	if(++idx >= LED_PER_U - 1) { idx = 0; }	
 
 }
 
@@ -154,11 +174,13 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 		{"dma", required_argument, 0, 'd'},
 		{"gpio", required_argument, 0, 'g'},
 		{"invert", no_argument, 0, 'i'},
-		{"clear", no_argument, 0, 'i'},
+		{"clear", no_argument, 0, 'c'},
 		{"strip", required_argument, 0, 's'},
 		{"height", required_argument, 0, 'y'},
 		{"width", required_argument, 0, 'x'},
 		{"version", no_argument, 0, 'v'},
+		{"debug", required_argument, 0, 'e'},
+		{"fps", required_argument, 0, 'f'},
 		{0, 0, 0, 0}
 	};
 
@@ -166,7 +188,7 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 	{
 
 		index = 0;
-		c = getopt_long(argc, argv, "cd:g:his:vx:y:", longopts, &index);
+		c = getopt_long(argc, argv, "cd:g:his:vx:y:e:f:", longopts, &index);
 
 		if (c == -1)
 			break;
@@ -296,6 +318,14 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 				}
 			}
 			break;
+		case 'e':
+			if(optarg) {
+				debug = atoi(optarg);
+			}
+			break;
+		case 'f':
+			if(optarg) fps = atoi(optarg);
+			break;
 
 		case 'v':
 			// fprintf(stderr, "%s version %s\n", argv[0], VERSION);
@@ -314,7 +344,7 @@ void parseargs(int argc, char **argv, ws2811_t *ws2811)
 
 int main(int argc, char *argv[])
 {
-    int ret = 0, ofst = 0;
+    int ret = 0, ofst = 0, i = 0;
 	struct sockaddr_in myaddr;                      /* our address */
     struct sockaddr_in remaddr;                     /* remote address */
     socklen_t addrlen = sizeof(remaddr);            /* length of addresses */
@@ -356,21 +386,27 @@ int main(int argc, char *argv[])
 
     while (running)
     {
-		int dmx_repeat_count[5] = {0, 0, 0, 0, 0};
+		int dmx_repeat_count[5] = {0,0,0,0,0};
 		int received_count = 0;
-		if(1) {
+		if(!debug) {
+			// printf("[%d]", i);
 			while (received_count < UNIVERSE) {
 				recvlen = recvfrom(fd, udp_buf, DMX_BUFFER_SIZE, 0, (struct sockaddr *)&remaddr, &addrlen);
 				if (recvlen <= 14) { continue; }
 				ofst = udp_buf[14];
-				if (dmx_repeat_count[ofst] > 0) { continue; }
+				// printf("%d, ", ofst);
+				if (ofst >= UNIVERSE) { continue; }
+				// printf("%d, ", ofst);
+				// if (dmx_repeat_count[ofst] > 0) { continue; }
 				received_count++;
 				dmx_repeat_count[ofst]++;
 				memcpy(rgb_buf + ofst * LED_PER_U * 3, udp_buf + 18, LED_PER_U * 3 * sizeof(char));
+				
+				// dmx2rgb(ledstring.channel[0].leds + ofst * LED_PER_U, rgb_buf, LED_COUNT * 3);
 				// fprintf(stderr, "%d\n", ofst);
 			}
-			
-			
+			if(++i > 1000) i = 0;
+			// printf("\n");
 			dmx2rgb(matrix, rgb_buf, LED_COUNT * 3);
 
 		} else {
@@ -385,7 +421,7 @@ int main(int argc, char *argv[])
 	    }
 		
         // 60 frames /sec
-        usleep(1000000 / 60);
+        usleep(1000000 / (1 + fps));
     }
 
     if (clear_on_exit) {
